@@ -217,15 +217,17 @@ tool_MPW/
 ### 0. Installer podman-compose
 
 ```bash
-pip3 install podman-compose
+# Methode recommandee sur Debian/Ubuntu >= 12
+pipx install podman-compose
 
-# Si pip3 est absent :
-sudo apt install python3-pip -y && pip3 install podman-compose
+# Si pipx est absent :
+sudo apt install pipx -y
+pipx install podman-compose
+pipx ensurepath
+source ~/.bashrc
 
-# Verifier que la commande est dans le PATH
+# Verifier l'installation
 which podman-compose
-# Si vide, ajouter dans ~/.bashrc :
-echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc
 ```
 
 ### 1. Activer la socket Podman rootless
