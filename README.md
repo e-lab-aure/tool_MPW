@@ -211,8 +211,22 @@ tool_MPW/
 ### Prerequis
 
 - Podman >= 4.0 installe sur l'hote
-- `podman-compose` installe (`pip install podman-compose`)
+- `podman-compose` installe (voir ci-dessous)
 - Acces SSH au serveur
+
+### 0. Installer podman-compose
+
+```bash
+pip3 install podman-compose
+
+# Si pip3 est absent :
+sudo apt install python3-pip -y && pip3 install podman-compose
+
+# Verifier que la commande est dans le PATH
+which podman-compose
+# Si vide, ajouter dans ~/.bashrc :
+echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc
+```
 
 ### 1. Activer la socket Podman rootless
 
