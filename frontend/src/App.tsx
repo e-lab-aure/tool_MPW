@@ -1,14 +1,16 @@
 /**
  * Composant racine de Master Pod Warden.
  * Orchestre la mise en page : tableau des conteneurs (gauche) et
- * panneau de detail (droite) avec onglets Logs / Stats.
+ * panneau de detail (droite) avec onglets Logs / Stats / Info.
  */
 
 import { useState } from "react";
 import { ContainerTable } from "./components/ContainerTable";
 import { Header } from "./components/Header";
+import { InfoPanel } from "./components/InfoPanel";
 import { LogsPanel } from "./components/LogsPanel";
 import { StatsPanel } from "./components/StatsPanel";
+import { useContainerDetail } from "./hooks/useContainerDetail";
 import { useContainers } from "./hooks/useContainers";
 import { useLogs } from "./hooks/useLogs";
 import { useStats } from "./hooks/useStats";
@@ -20,17 +22,20 @@ export function App() {
   const [activeTab, setActiveTab] = useState<DetailTab>("logs");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  // Streams temps reel pour le conteneur selectionne
+  // Streams temps reel - actifs uniquement sur l'onglet correspondant
   const { entries: logEntries, connected: logsConnected, clear: clearLogs } =
     useLogs(selectedId);
   const { stats, connected: statsConnected } = useStats(
     activeTab === "stats" ? selectedId : null,
   );
 
+  // Details (reseaux, montages, taille) - charge uniquement sur l'onglet Info
+  const { detail, loading: detailLoading, error: detailError } =
+    useContainerDetail(selectedId, activeTab === "info");
+
   /** Selectionne un conteneur et bascule sur l'onglet logs par defaut. */
   function handleSelect(id: string): void {
     if (selectedId === id) {
-      // Deselecte si on clique sur le meme
       setSelectedId(null);
     } else {
       setSelectedId(id);
@@ -59,7 +64,6 @@ export function App() {
             selectedId ? "w-1/2" : "w-full"
           } transition-all duration-200`}
         >
-          {/* En-tete du tableau */}
           <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-3">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-medium text-slate-300">Conteneurs</h2>
@@ -74,14 +78,12 @@ export function App() {
             )}
           </div>
 
-          {/* Message d'erreur */}
           {error && (
             <div className="mx-4 mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
               {error}
             </div>
           )}
 
-          {/* Tableau */}
           <div className="flex-1 overflow-y-auto">
             <ContainerTable
               containers={containers}
@@ -96,7 +98,7 @@ export function App() {
         {/* Panneau droit : detail du conteneur selectionne */}
         {selectedId && selectedContainer && (
           <div className="flex w-1/2 flex-col">
-            {/* En-tete du panneau detail */}
+            {/* En-tete avec onglets */}
             <div className="flex items-center justify-between border-b border-slate-700/50 px-4 py-3">
               <div className="flex items-center gap-2">
                 <span className="font-medium text-slate-200">
@@ -108,8 +110,7 @@ export function App() {
               </div>
 
               <div className="flex items-center gap-1">
-                {/* Onglets */}
-                {(["logs", "stats"] as DetailTab[]).map((tab) => (
+                {(["logs", "stats", "info"] as DetailTab[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -123,7 +124,6 @@ export function App() {
                   </button>
                 ))}
 
-                {/* Bouton fermer */}
                 <button
                   onClick={() => setSelectedId(null)}
                   className="ml-2 rounded p-1 text-slate-500 transition-colors hover:text-slate-400"
@@ -147,15 +147,23 @@ export function App() {
             </div>
 
             {/* Contenu de l'onglet actif */}
-            <div className="min-h-0 flex-1">
-              {activeTab === "logs" ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {activeTab === "logs" && (
                 <LogsPanel
                   entries={logEntries}
                   connected={logsConnected}
                   onClear={clearLogs}
                 />
-              ) : (
+              )}
+              {activeTab === "stats" && (
                 <StatsPanel stats={stats} connected={statsConnected} />
+              )}
+              {activeTab === "info" && (
+                <InfoPanel
+                  detail={detail}
+                  loading={detailLoading}
+                  error={detailError}
+                />
               )}
             </div>
           </div>

@@ -52,3 +52,32 @@ class ActionResponse(BaseModel):
 
     status: str
     container_id: str
+
+
+class ContainerMount(BaseModel):
+    """Mappage de volume ou bind mount d'un conteneur."""
+
+    type: str
+    source: str
+    destination: str
+    mode: str
+    rw: bool
+
+
+class ContainerNetwork(BaseModel):
+    """Reseau auquel est connecte un conteneur."""
+
+    name: str
+    ip_address: str
+    gateway: str
+    mac_address: str
+
+
+class ContainerDetail(BaseModel):
+    """Informations detaillees d'un conteneur : reseaux, montages et taille."""
+
+    id: str
+    networks: list[ContainerNetwork]
+    mounts: list[ContainerMount]
+    size_root_fs: int
+    size_rw: int

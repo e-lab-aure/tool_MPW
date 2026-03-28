@@ -35,7 +35,30 @@ export interface LogEntry {
   text: string;
 }
 
+export interface ContainerMount {
+  type: string;
+  source: string;
+  destination: string;
+  mode: string;
+  rw: boolean;
+}
+
+export interface ContainerNetwork {
+  name: string;
+  ip_address: string;
+  gateway: string;
+  mac_address: string;
+}
+
+export interface ContainerDetail {
+  id: string;
+  networks: ContainerNetwork[];
+  mounts: ContainerMount[];
+  size_root_fs: number;
+  size_rw: number;
+}
+
 export type ContainerAction = "start" | "stop" | "restart";
 
 /** Onglets disponibles dans le panneau de detail d'un conteneur. */
-export type DetailTab = "logs" | "stats";
+export type DetailTab = "logs" | "stats" | "info";

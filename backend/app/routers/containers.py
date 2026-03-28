@@ -1,17 +1,29 @@
 """
 Routes REST pour la gestion des conteneurs Podman.
-Expose : liste, demarrage, arret, redemarrage.
+Expose : liste, inspection, demarrage, arret, redemarrage.
 """
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import ActionResponse, Container
+from app.models.schemas import (
+    ActionResponse,
+    Container,
+    ContainerDetail,
+    ContainerMount,
+    ContainerNetwork,
+)
 from app.services.podman import get_client, parse_container
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _now() -> str:
+    """Retourne l'horodatage courant au format ISO."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 @router.get("/", response_model=list[Container])
@@ -44,13 +56,85 @@ async def list_containers() -> list[Container]:
         return containers
 
 
+@router.get("/{container_id}/inspect", response_model=ContainerDetail)
+async def inspect_container(container_id: str) -> ContainerDetail:
+    """
+    Retourne les details complets d'un conteneur : reseaux, montages et taille.
+    Appele a la selection d'un conteneur, pas dans le polling principal.
+    Le parametre size=1 active le calcul de taille (peut etre lent sur grands volumes).
+    """
+    async with get_client(timeout=15.0) as client:
+        response = await client.get(
+            f"/containers/{container_id}/json",
+            params={"size": 1},
+        )
+
+    if response.status_code != 200:
+        logger.error(
+            "[ERROR] %s - containers.inspect - Podman HTTP %d pour %s",
+            _now(),
+            response.status_code,
+            container_id[:12],
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Impossible d'inspecter le conteneur.",
+        )
+
+    raw = response.json()
+
+    # --- Reseaux ---
+    networks: list[ContainerNetwork] = []
+    raw_networks: dict = (
+        raw.get("NetworkSettings") or {}
+    ).get("Networks") or {}
+
+    for net_name, net_data in raw_networks.items():
+        networks.append(
+            ContainerNetwork(
+                name=net_name,
+                ip_address=net_data.get("IPAddress") or "",
+                gateway=net_data.get("Gateway") or "",
+                mac_address=net_data.get("MacAddress") or "",
+            )
+        )
+
+    # --- Montages (volumes et bind mounts) ---
+    mounts: list[ContainerMount] = []
+    for m in raw.get("Mounts") or []:
+        mounts.append(
+            ContainerMount(
+                type=m.get("Type", "bind"),
+                source=m.get("Source", ""),
+                destination=m.get("Destination", ""),
+                mode=m.get("Mode", "rw"),
+                rw=m.get("RW", True),
+            )
+        )
+
+    logger.info(
+        "[INFO] %s - containers.inspect - conteneur %s inspecte (%d reseaux, %d montages)",
+        _now(),
+        container_id[:12],
+        len(networks),
+        len(mounts),
+    )
+
+    return ContainerDetail(
+        id=container_id,
+        networks=networks,
+        mounts=mounts,
+        size_root_fs=raw.get("SizeRootFs") or 0,
+        size_rw=raw.get("SizeRw") or 0,
+    )
+
+
 @router.post("/{container_id}/start", response_model=ActionResponse)
 async def start_container(container_id: str) -> ActionResponse:
     """Demarre un conteneur arrete."""
     async with get_client() as client:
         response = await client.post(f"/containers/{container_id}/start")
 
-    # 204 = demarre, 304 = deja en cours
     if response.status_code not in (204, 304):
         logger.error(
             "[ERROR] %s - containers.start - echec pour %s (HTTP %d)",
@@ -77,7 +161,6 @@ async def stop_container(container_id: str) -> ActionResponse:
     async with get_client() as client:
         response = await client.post(f"/containers/{container_id}/stop")
 
-    # 204 = arrete, 304 = deja arrete
     if response.status_code not in (204, 304):
         logger.error(
             "[ERROR] %s - containers.stop - echec pour %s (HTTP %d)",
@@ -117,15 +200,8 @@ async def restart_container(container_id: str) -> ActionResponse:
         )
 
     logger.info(
-        "[INFO] %s - containers.restart - conteneur %s redémarre",
+        "[INFO] %s - containers.restart - conteneur %s redemarre",
         _now(),
         container_id[:12],
     )
     return ActionResponse(status="restarted", container_id=container_id)
-
-
-def _now() -> str:
-    """Retourne l'horodatage courant au format ISO."""
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
