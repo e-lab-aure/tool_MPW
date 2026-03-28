@@ -1,6 +1,6 @@
 # --- Master Pod Warden - Backend ---
 # Image Python slim pour reduire la surface d'attaque
-FROM python:3.12-slim
+FROM docker.io/library/python:3.12-slim
 
 # Cree un utilisateur non-root dedie (securite : pas de root dans le conteneur)
 RUN groupadd --gid 1001 mpw && \

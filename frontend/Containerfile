@@ -1,6 +1,6 @@
 # --- Master Pod Warden - Frontend ---
 # Etape 1 : build de l'application React avec Node
-FROM node:20-slim AS builder
+FROM docker.io/library/node:20-slim AS builder
 
 WORKDIR /build
 
@@ -15,7 +15,7 @@ RUN npm run build
 # ---
 
 # Etape 2 : image finale nginx minimaliste
-FROM nginx:1.27-alpine
+FROM docker.io/library/nginx:1.27-alpine
 
 # Supprime la config nginx par defaut
 RUN rm /etc/nginx/conf.d/default.conf
