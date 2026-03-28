@@ -1,0 +1,54 @@
+name: mpw
+
+services:
+
+  # --- Backend FastAPI ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Containerfile
+    container_name: mpw-backend
+    restart: unless-stopped
+    environment:
+      # Chemin interne de la socket Podman montee depuis l'hote
+      PODMAN_SOCKET_PATH: /run/podman/podman.sock
+    volumes:
+      # Monte la socket Podman de l'hote en lecture seule (rootless)
+      # La variable PODMAN_SOCKET_PATH_HOST est definie dans le fichier .env
+      - ${PODMAN_SOCKET_PATH_HOST}:/run/podman/podman.sock:ro
+      # Volume de logs persistant
+      - mpw-logs:/var/log/mpw
+    networks:
+      - mpw-net
+    # Pas de port expose vers l'exterieur : seul nginx y accede
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+        "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # --- Frontend nginx + React ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Containerfile
+    container_name: mpw-frontend
+    restart: unless-stopped
+    ports:
+      - "9090:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - mpw-net
+
+networks:
+  mpw-net:
+    driver: bridge
+
+volumes:
+  mpw-logs:

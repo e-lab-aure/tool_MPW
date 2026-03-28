@@ -1,0 +1,28 @@
+# --- Master Pod Warden - Backend ---
+# Image Python slim pour reduire la surface d'attaque
+FROM python:3.12-slim
+
+# Cree un utilisateur non-root dedie (securite : pas de root dans le conteneur)
+RUN groupadd --gid 1001 mpw && \
+    useradd --uid 1001 --gid mpw --shell /bin/bash --create-home mpw
+
+# Cree le repertoire de logs avec les bonnes permissions
+RUN mkdir -p /var/log/mpw && chown mpw:mpw /var/log/mpw
+
+WORKDIR /app
+
+# Installe les dependances avant de copier le code (optimise le cache Docker)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copie le code source
+COPY app/ ./app/
+
+# Bascule vers l'utilisateur non-root
+USER mpw
+
+EXPOSE 8000
+
+# Lance uvicorn avec logs non-bufferises pour que Docker les capture correctement
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

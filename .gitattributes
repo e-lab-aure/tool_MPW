@@ -1,0 +1,8 @@
+# Force LF pour tous les fichiers texte (coherence Linux/serveur)
+* text=auto eol=lf
+
+# Binaires
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

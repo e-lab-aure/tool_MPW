@@ -1,0 +1,32 @@
+# --- Master Pod Warden - Frontend ---
+# Etape 1 : build de l'application React avec Node
+FROM node:20-slim AS builder
+
+WORKDIR /build
+
+# Installe les dependances avant de copier le code source (cache layer)
+COPY package.json ./
+RUN npm install --frozen-lockfile
+
+# Copie les sources et build
+COPY . .
+RUN npm run build
+
+# ---
+
+# Etape 2 : image finale nginx minimaliste
+FROM nginx:1.27-alpine
+
+# Supprime la config nginx par defaut
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copie la configuration MPW
+COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+
+# Copie le build React depuis l'etape precedente
+COPY --from=builder /build/dist /usr/share/nginx/html
+
+EXPOSE 80
+
+# nginx s'execute en foreground (pas de daemon)
+CMD ["nginx", "-g", "daemon off;"]
