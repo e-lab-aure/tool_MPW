@@ -1,17 +1,16 @@
 # --- Master Pod Warden - Backend ---
-# Image Python slim pour reduire la surface d'attaque
+# Image Python slim pour reduire la surface d'attaque.
+# Note securite : en mode rootless Podman, root dans le conteneur est mappe
+# sur l'uid de l'utilisateur hote (non-root). L'isolation est garantie par
+# le user namespace - il n'y a pas de privilege root reel sur l'hote.
 FROM docker.io/library/python:3.12-slim
 
-# Cree un utilisateur non-root dedie (securite : pas de root dans le conteneur)
-RUN groupadd --gid 1001 mpw && \
-    useradd --uid 1001 --gid mpw --shell /bin/bash --create-home mpw
-
-# Cree le repertoire de logs avec les bonnes permissions
-RUN mkdir -p /var/log/mpw && chown mpw:mpw /var/log/mpw
+# Cree le repertoire de logs
+RUN mkdir -p /var/log/mpw
 
 WORKDIR /app
 
-# Installe les dependances avant de copier le code (optimise le cache Docker)
+# Installe les dependances avant de copier le code (optimise le cache des layers)
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
@@ -19,10 +18,6 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copie le code source
 COPY app/ ./app/
 
-# Bascule vers l'utilisateur non-root
-USER mpw
-
 EXPOSE 8000
 
-# Lance uvicorn avec logs non-bufferises pour que Docker les capture correctement
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
