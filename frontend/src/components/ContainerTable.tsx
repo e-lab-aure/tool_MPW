@@ -14,8 +14,6 @@ interface ContainerTableProps {
   onAction: (id: string, action: ContainerAction) => void;
   actionLoading: string | null;
   autostartPolicies: Record<string, string>;
-  toggleLoading: string | null;
-  onToggleAutostart: (id: string, enabled: boolean) => void;
 }
 
 /** Formate un timestamp Unix en date lisible. */
@@ -46,8 +44,6 @@ export function ContainerTable({
   onAction,
   actionLoading,
   autostartPolicies,
-  toggleLoading,
-  onToggleAutostart,
 }: ContainerTableProps) {
   if (containers.length === 0) {
     return (
@@ -90,7 +86,6 @@ export function ContainerTable({
             const isLoading = actionLoading === c.id;
             const isRunning = c.state.toLowerCase() === "running";
             const isAutostart = autostartPolicies[c.id] === "always";
-            const isToggling = toggleLoading === c.id;
 
             return (
               <tr
@@ -143,29 +138,18 @@ export function ContainerTable({
                   {formatDate(c.created)}
                 </td>
 
-                {/* Toggle demarrage automatique */}
-                <td
-                  className="px-4 py-3 text-center"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                {/* Indicateur demarrage automatique (read-only) */}
+                <td className="px-4 py-3 text-center">
                   {autostartPolicies[c.id] !== undefined ? (
-                    <button
-                      title={isAutostart ? "Desactiver l'autostart" : "Activer l'autostart"}
-                      aria-label={isAutostart ? "Desactiver l'autostart" : "Activer l'autostart"}
-                      disabled={isToggling}
-                      onClick={() => onToggleAutostart(c.id, !isAutostart)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
-                        isAutostart ? "bg-emerald-500" : "bg-slate-600"
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 ${
-                          isAutostart ? "translate-x-4" : "translate-x-0"
-                        }`}
-                      />
-                    </button>
+                    isAutostart ? (
+                      <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">
+                        auto
+                      </span>
+                    ) : (
+                      <span className="text-slate-600 text-xs">-</span>
+                    )
                   ) : (
-                    <span className="text-slate-600 text-xs">-</span>
+                    <span className="text-slate-700 text-xs">...</span>
                   )}
                 </td>
 

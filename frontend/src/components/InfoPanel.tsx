@@ -9,6 +9,14 @@ interface InfoPanelProps {
   detail: ContainerDetail | null;
   loading: boolean;
   error: string | null;
+  /** true si la politique "always" est active, false sinon */
+  autostartEnabled: boolean;
+  /** true si la policy a ete chargee (distingue "desactive" de "inconnu") */
+  autostartKnown: boolean;
+  /** true pendant que le toggle est en cours d'enregistrement */
+  autostartLoading: boolean;
+  /** Callback pour basculer l'autostart */
+  onToggleAutostart: () => void;
 }
 
 /** Convertit des octets en chaine lisible (MB, GB). */
@@ -25,7 +33,15 @@ function truncatePath(path: string, maxLen: number = 48): string {
   return `${path.slice(0, 20)}...${path.slice(-(maxLen - 23))}`;
 }
 
-export function InfoPanel({ detail, loading, error }: InfoPanelProps) {
+export function InfoPanel({
+  detail,
+  loading,
+  error,
+  autostartEnabled,
+  autostartKnown,
+  autostartLoading,
+  onToggleAutostart,
+}: InfoPanelProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-xs text-slate-500">
@@ -46,6 +62,42 @@ export function InfoPanel({ detail, loading, error }: InfoPanelProps) {
 
   return (
     <div className="flex-1 space-y-5 overflow-y-auto p-4">
+
+      {/* Demarrage automatique */}
+      <section>
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
+          Demarrage automatique
+        </h3>
+        <div className="flex items-center justify-between rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
+          <div>
+            <p className="text-sm text-slate-300">
+              {autostartEnabled ? "Actif" : "Inactif"}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {autostartEnabled
+                ? "Le conteneur redemarre automatiquement au demarrage du service Podman."
+                : "Le conteneur ne demarre pas automatiquement."}
+            </p>
+          </div>
+          {autostartKnown && (
+            <button
+              title={autostartEnabled ? "Desactiver l'autostart" : "Activer l'autostart"}
+              aria-label={autostartEnabled ? "Desactiver l'autostart" : "Activer l'autostart"}
+              disabled={autostartLoading}
+              onClick={onToggleAutostart}
+              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                autostartEnabled ? "bg-emerald-500" : "bg-slate-600"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200 ${
+                  autostartEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+          )}
+        </div>
+      </section>
 
       {/* Taille de l'image */}
       <section>

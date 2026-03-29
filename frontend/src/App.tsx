@@ -94,8 +94,6 @@ export function App() {
               onAction={handleAction}
               actionLoading={actionLoading}
               autostartPolicies={autostartPolicies}
-              toggleLoading={toggleLoading}
-              onToggleAutostart={toggleAutostart}
             />
           </div>
         </div>
@@ -168,6 +166,21 @@ export function App() {
                   detail={detail}
                   loading={detailLoading}
                   error={detailError}
+                  autostartEnabled={
+                    selectedId ? autostartPolicies[selectedId] === "always" : false
+                  }
+                  autostartKnown={
+                    selectedId ? selectedId in autostartPolicies : false
+                  }
+                  autostartLoading={toggleLoading === selectedId}
+                  onToggleAutostart={() => {
+                    if (selectedId) {
+                      toggleAutostart(
+                        selectedId,
+                        autostartPolicies[selectedId] !== "always",
+                      );
+                    }
+                  }}
                 />
               )}
             </div>
