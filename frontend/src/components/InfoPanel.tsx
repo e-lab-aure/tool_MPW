@@ -318,12 +318,31 @@ export function InfoPanel({
 function CopyableCommand({ label, command }: { label: string; command: string }) {
   const [copied, setCopied] = useState(false);
 
-  /** Copie la commande dans le presse-papiers et affiche un retour visuel. */
+  /**
+   * Copie la commande dans le presse-papiers.
+   * Utilise navigator.clipboard si disponible (HTTPS), sinon fallback
+   * sur document.execCommand pour les contextes HTTP (reseau local).
+   */
   function handleCopy() {
-    navigator.clipboard.writeText(command).then(() => {
+    const confirm = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    };
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(command).then(confirm);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = command;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      confirm();
+    }
   }
 
   return (
