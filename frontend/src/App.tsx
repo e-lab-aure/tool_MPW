@@ -184,7 +184,7 @@ export function App() {
                     selectedId ? (autostartMechanisms[selectedId] ?? "none") : "none"
                   }
                   autostartLoading={toggleLoading === selectedId}
-                  autostartError={toggleLoading === selectedId ? null : autostartError}
+                  autostartError={autostartError}
                   onToggleAutostart={() => {
                     if (selectedId) {
                       toggleAutostart(

@@ -4,7 +4,7 @@
  * et rafraichies manuellement apres chaque toggle pour ne pas surcharger l'API.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AutostartEntry } from "../types";
 
 interface UseAutostartReturn {
@@ -27,6 +27,8 @@ export function useAutostart(): UseAutostartReturn {
   const [mechanisms, setMechanisms] = useState<Record<string, string>>({});
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  /** Verrou pour eviter les appels concurrents sur le meme conteneur. */
+  const pendingRef = useRef<string | null>(null);
 
   /** Charge les policies de tous les conteneurs en une seule requete batch. */
   const refresh = useCallback(async (): Promise<void> => {
@@ -59,8 +61,13 @@ export function useAutostart(): UseAutostartReturn {
    */
   const toggle = useCallback(
     async (id: string, enabled: boolean): Promise<void> => {
+      // Evite les appels concurrents : ignore si une requete est deja en cours
+      if (pendingRef.current !== null) return;
+
+      pendingRef.current = id;
       setToggleLoading(id);
       setToggleError(null);
+
       try {
         const response = await fetch(`/api/containers/${id}/autostart`, {
           method: "POST",
@@ -82,6 +89,7 @@ export function useAutostart(): UseAutostartReturn {
       } catch {
         setToggleError("Impossible de joindre l'API.");
       } finally {
+        pendingRef.current = null;
         setToggleLoading(null);
       }
     },
