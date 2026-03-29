@@ -130,24 +130,26 @@ async def get_autostart_policies() -> list[AutostartEntry]:
 async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionResponse:
     """
     Active ou desactive le demarrage automatique d'un conteneur.
-    Modifie la RestartPolicy via l'API Docker compat :
+    Utilise l'API libpod native (le endpoint Docker compat /update ne supporte
+    pas la modification de RestartPolicy dans Podman).
     - enabled=True  -> RestartPolicy "always"
     - enabled=False -> RestartPolicy "no"
     """
     policy_name = "always" if body.enabled else "no"
 
-    async with get_client() as client:
+    async with get_libpod_client() as client:
         response = await client.post(
             f"/containers/{container_id}/update",
             json={"RestartPolicy": {"Name": policy_name, "MaximumRetryCount": 0}},
         )
 
-    if response.status_code not in (200, 204):
+    if response.status_code not in (200, 201, 204):
         logger.error(
-            "[ERROR] %s - containers.autostart - echec update pour %s (HTTP %d)",
+            "[ERROR] %s - containers.autostart - echec update pour %s (HTTP %d) : %s",
             _now(),
             container_id[:12],
             response.status_code,
+            response.text[:200],
         )
         raise HTTPException(
             status_code=502,
@@ -156,7 +158,7 @@ async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionRespo
 
     action = "autostart_enabled" if body.enabled else "autostart_disabled"
     logger.info(
-        "[INFO] %s - containers.autostart - conteneur %s : policy -> %s",
+        "[INFO] %s - containers.autostart - conteneur %s : RestartPolicy -> %s",
         _now(),
         container_id[:12],
         policy_name,
