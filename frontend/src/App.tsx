@@ -4,7 +4,7 @@
  * panneau de detail (droite) avec onglets Logs / Stats / Info.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ContainerTable } from "./components/ContainerTable";
 import { Header } from "./components/Header";
 import { InfoPanel } from "./components/InfoPanel";
@@ -18,7 +18,7 @@ import { useStats } from "./hooks/useStats";
 import type { ContainerAction, DetailTab } from "./types";
 
 export function App() {
-  const { containers, loading, error, triggerAction } = useContainers();
+  const { containers, loading, error, lastUpdated, refresh, triggerAction } = useContainers();
   const {
     policies: autostartPolicies,
     mechanisms: autostartMechanisms,
@@ -40,6 +40,20 @@ export function App() {
   // Details (reseaux, montages, taille) - charge uniquement sur l'onglet Info
   const { detail, loading: detailLoading, error: detailError } =
     useContainerDetail(selectedId, activeTab === "info");
+
+  /**
+   * Raccourci clavier Echap pour fermer le panneau de detail.
+   * Ameliore l'accessibilite et la navigation au clavier.
+   */
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && selectedId) {
+        setSelectedId(null);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId]);
 
   /** Selectionne un conteneur et bascule sur l'onglet logs par defaut. */
   function handleSelect(id: string): void {
@@ -81,9 +95,45 @@ export function App() {
                 </span>
               )}
             </div>
-            {loading && (
-              <span className="text-xs text-slate-500">Chargement...</span>
-            )}
+
+            <div className="flex items-center gap-3">
+              {/* Horodatage du dernier rafraichissement */}
+              {lastUpdated && (
+                <span className="text-xs text-slate-600">
+                  {lastUpdated.toLocaleTimeString("fr-FR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </span>
+              )}
+              {loading && (
+                <span className="text-xs text-slate-500">Chargement...</span>
+              )}
+
+              {/* Bouton de rafraichissement manuel */}
+              <button
+                onClick={() => void refresh()}
+                disabled={loading}
+                title="Rafraichir la liste"
+                aria-label="Rafraichir la liste"
+                className="rounded p-1 text-slate-500 transition-colors hover:text-slate-400 disabled:opacity-40"
+              >
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {error && (
@@ -92,7 +142,7 @@ export function App() {
             </div>
           )}
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             <ContainerTable
               containers={containers}
               selectedId={selectedId}
@@ -134,17 +184,14 @@ export function App() {
                   </button>
                 ))}
 
+                {/* Fermeture avec Echap ou bouton */}
                 <button
                   onClick={() => setSelectedId(null)}
+                  title="Fermer (Echap)"
                   className="ml-2 rounded p-1 text-slate-500 transition-colors hover:text-slate-400"
                   aria-label="Fermer le panneau"
                 >
-                  <svg
-                    className="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"

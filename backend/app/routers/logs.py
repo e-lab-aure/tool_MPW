@@ -5,9 +5,10 @@ Utilise l'API Docker compat qui retourne un flux multiplexe (stdout/stderr).
 
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.services.podman import get_streaming_client, parse_multiplexed_stream
+from app.utils import now, valid_container_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -16,7 +17,7 @@ router = APIRouter()
 @router.websocket("/{container_id}/logs")
 async def stream_logs(
     websocket: WebSocket,
-    container_id: str,
+    container_id: str = Depends(valid_container_id),
     tail: int = 100,
 ) -> None:
     """
@@ -27,7 +28,7 @@ async def stream_logs(
     await websocket.accept()
     logger.info(
         "[INFO] %s - logs.stream - connexion ouverte pour conteneur %s",
-        _now(),
+        now(),
         container_id[:12],
     )
 
@@ -46,7 +47,7 @@ async def stream_logs(
                 if response.status_code != 200:
                     logger.error(
                         "[ERROR] %s - logs.stream - Podman HTTP %d pour conteneur %s",
-                        _now(),
+                        now(),
                         response.status_code,
                         container_id[:12],
                     )
@@ -59,13 +60,13 @@ async def stream_logs(
     except WebSocketDisconnect:
         logger.info(
             "[INFO] %s - logs.stream - client deconnecte du conteneur %s",
-            _now(),
+            now(),
             container_id[:12],
         )
     except Exception as exc:
         logger.error(
             "[ERROR] %s - logs.stream - erreur inattendue pour %s : %s",
-            _now(),
+            now(),
             container_id[:12],
             exc,
         )
@@ -73,10 +74,3 @@ async def stream_logs(
             await websocket.close(code=1011)
         except RuntimeError:
             pass
-
-
-def _now() -> str:
-    """Retourne l'horodatage courant au format ISO."""
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")

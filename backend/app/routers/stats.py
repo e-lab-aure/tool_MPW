@@ -6,16 +6,20 @@ Utilise l'API Docker compat qui retourne un flux JSON (un objet par intervalle).
 import json
 import logging
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 
 from app.services.podman import get_streaming_client, parse_stats
+from app.utils import now, valid_container_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 @router.websocket("/{container_id}/stats")
-async def stream_stats(websocket: WebSocket, container_id: str) -> None:
+async def stream_stats(
+    websocket: WebSocket,
+    container_id: str = Depends(valid_container_id),
+) -> None:
     """
     Stream les metriques d'un conteneur en temps reel via WebSocket.
     Envoie des objets JSON : {cpu_percent, memory_usage, memory_limit, memory_percent,
@@ -25,7 +29,7 @@ async def stream_stats(websocket: WebSocket, container_id: str) -> None:
     await websocket.accept()
     logger.info(
         "[INFO] %s - stats.stream - connexion ouverte pour conteneur %s",
-        _now(),
+        now(),
         container_id[:12],
     )
 
@@ -39,7 +43,7 @@ async def stream_stats(websocket: WebSocket, container_id: str) -> None:
                 if response.status_code != 200:
                     logger.error(
                         "[ERROR] %s - stats.stream - Podman HTTP %d pour conteneur %s",
-                        _now(),
+                        now(),
                         response.status_code,
                         container_id[:12],
                     )
@@ -56,20 +60,20 @@ async def stream_stats(websocket: WebSocket, container_id: str) -> None:
                     except json.JSONDecodeError as exc:
                         logger.warning(
                             "[WARNING] %s - stats.stream - ligne non-JSON ignoree : %s",
-                            _now(),
+                            now(),
                             exc,
                         )
 
     except WebSocketDisconnect:
         logger.info(
             "[INFO] %s - stats.stream - client deconnecte du conteneur %s",
-            _now(),
+            now(),
             container_id[:12],
         )
     except Exception as exc:
         logger.error(
             "[ERROR] %s - stats.stream - erreur inattendue pour %s : %s",
-            _now(),
+            now(),
             container_id[:12],
             exc,
         )
@@ -77,10 +81,3 @@ async def stream_stats(websocket: WebSocket, container_id: str) -> None:
             await websocket.close(code=1011)
         except RuntimeError:
             pass
-
-
-def _now() -> str:
-    """Retourne l'horodatage courant au format ISO."""
-    from datetime import datetime, timezone
-
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
