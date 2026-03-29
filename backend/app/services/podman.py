@@ -16,19 +16,36 @@ logger = logging.getLogger(__name__)
 # Chemin de la socket Unix Podman, injectable via variable d'environnement
 PODMAN_SOCKET = os.environ.get("PODMAN_SOCKET_PATH", "/run/podman/podman.sock")
 
-# Version de l'API Docker compat utilisee
+# Version de l'API Docker compat utilisee (liste, actions, streams)
 API_VERSION = "v1.41"
+
+# Version de l'API native Podman (libpod) - donnees plus completes pour inspect
+LIBPOD_VERSION = "v4.0.0"
 
 
 def get_client(timeout: float | None = 10.0) -> httpx.AsyncClient:
     """
-    Cree un client HTTP async connecte a la socket Unix Podman.
-    Le appelant est responsable de fermer le client (utiliser en contexte async with).
+    Cree un client HTTP async connecte a la socket Unix Podman (API Docker compat).
+    Utilise pour : liste, start/stop/restart, logs, stats.
     """
     transport = httpx.AsyncHTTPTransport(uds=PODMAN_SOCKET)
     return httpx.AsyncClient(
         transport=transport,
         base_url=f"http://podman/{API_VERSION}",
+        timeout=timeout,
+    )
+
+
+def get_libpod_client(timeout: float | None = 10.0) -> httpx.AsyncClient:
+    """
+    Cree un client HTTP async connecte a l'API native Podman (libpod).
+    Prefere pour les inspects : retourne des donnees completes pour tous les types
+    de reseaux (bridge, slirp4netns, pasta) et inclut les metadonnees systemd.
+    """
+    transport = httpx.AsyncHTTPTransport(uds=PODMAN_SOCKET)
+    return httpx.AsyncClient(
+        transport=transport,
+        base_url=f"http://podman/{LIBPOD_VERSION}/libpod",
         timeout=timeout,
     )
 

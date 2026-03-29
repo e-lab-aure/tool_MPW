@@ -18,7 +18,7 @@ from app.models.schemas import (
     ContainerMount,
     ContainerNetwork,
 )
-from app.services.podman import get_client, parse_container
+from app.services.podman import get_client, get_libpod_client, parse_container
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -66,8 +66,9 @@ async def get_autostart_policies() -> list[AutostartEntry]:
     Effectue les inspects en parallele via asyncio.gather pour minimiser la latence.
     Une politique "always" signifie que le conteneur redemarrera automatiquement.
     """
-    async with get_client(timeout=15.0) as client:
-        list_response = await client.get("/containers/json", params={"all": True})
+    # Recuperer la liste via Docker compat, puis inspecter via libpod pour les details
+    async with get_client(timeout=15.0) as list_client:
+        list_response = await list_client.get("/containers/json", params={"all": True})
 
         if list_response.status_code != 200:
             logger.error(
@@ -82,18 +83,40 @@ async def get_autostart_policies() -> list[AutostartEntry]:
 
         container_ids: list[str] = [c["Id"] for c in list_response.json()]
 
-        async def _inspect_policy(cid: str) -> AutostartEntry:
-            """Recupere la restart policy d'un conteneur depuis son inspect."""
+    async def _inspect_policy(cid: str) -> AutostartEntry:
+        """
+        Detecte la politique de demarrage automatique d'un conteneur.
+        Deux mecanismes sont reconnus :
+          1. RestartPolicy "always" : configure via --restart=always
+          2. Label PODMAN_SYSTEMD_UNIT : conteneur gere par une unite systemd
+             (quadlet ou podman generate systemd)
+        """
+        async with get_libpod_client(timeout=10.0) as client:
             resp = await client.get(f"/containers/{cid}/json")
-            if resp.status_code != 200:
-                return AutostartEntry(id=cid, restart_policy="no")
-            raw = resp.json()
-            policy: str = (
-                raw.get("HostConfig") or {}
-            ).get("RestartPolicy", {}).get("Name") or "no"
-            return AutostartEntry(id=cid, restart_policy=policy)
 
-        results = await asyncio.gather(*[_inspect_policy(cid) for cid in container_ids])
+        if resp.status_code != 200:
+            return AutostartEntry(id=cid, restart_policy="no", mechanism="none")
+
+        raw = resp.json()
+
+        # Verification via RestartPolicy
+        policy: str = (
+            (raw.get("HostConfig") or {})
+            .get("RestartPolicy", {})
+            .get("Name") or "no"
+        )
+
+        # Verification via label systemd (quadlet / podman generate systemd)
+        labels: dict = (raw.get("Config") or {}).get("Labels") or {}
+        if "PODMAN_SYSTEMD_UNIT" in labels:
+            return AutostartEntry(id=cid, restart_policy="always", mechanism="systemd")
+
+        if policy == "always":
+            return AutostartEntry(id=cid, restart_policy="always", mechanism="restart_policy")
+
+        return AutostartEntry(id=cid, restart_policy="no", mechanism="none")
+
+    results = await asyncio.gather(*[_inspect_policy(cid) for cid in container_ids])
 
     logger.info(
         "[INFO] %s - containers.autostart - politiques recuperees pour %d conteneurs",
@@ -145,10 +168,10 @@ async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionRespo
 async def inspect_container(container_id: str) -> ContainerDetail:
     """
     Retourne les details complets d'un conteneur : reseaux, montages et taille.
-    Appele a la selection d'un conteneur, pas dans le polling principal.
-    Le parametre size=1 active le calcul de taille (peut etre lent sur grands volumes).
+    Utilise l'API libpod native pour obtenir des donnees reseau completes,
+    notamment pour les reseaux par defaut (podman), slirp4netns et pasta.
     """
-    async with get_client(timeout=15.0) as client:
+    async with get_libpod_client(timeout=15.0) as client:
         response = await client.get(
             f"/containers/{container_id}/json",
             params={"size": 1},
@@ -169,20 +192,37 @@ async def inspect_container(container_id: str) -> ContainerDetail:
     raw = response.json()
 
     # --- Reseaux ---
+    # Priorite 1 : NetworkSettings.Networks (format Docker compat + libpod bridge)
+    # Priorite 2 : NetworkSettings top-level (format slirp4netns / conteneurs anciens)
     networks: list[ContainerNetwork] = []
-    raw_networks: dict = (
-        raw.get("NetworkSettings") or {}
-    ).get("Networks") or {}
+    net_settings: dict = raw.get("NetworkSettings") or {}
+    raw_networks: dict = net_settings.get("Networks") or {}
 
-    for net_name, net_data in raw_networks.items():
-        networks.append(
-            ContainerNetwork(
-                name=net_name,
-                ip_address=net_data.get("IPAddress") or "",
-                gateway=net_data.get("Gateway") or "",
-                mac_address=net_data.get("MacAddress") or "",
+    if raw_networks:
+        for net_name, net_data in raw_networks.items():
+            networks.append(
+                ContainerNetwork(
+                    name=net_name,
+                    ip_address=net_data.get("IPAddress") or "",
+                    gateway=net_data.get("Gateway") or "",
+                    mac_address=net_data.get("MacAddress") or "",
+                )
             )
-        )
+    else:
+        # Fallback pour les conteneurs rootless sans reseau bridge explicite :
+        # l'IP et la gateway sont directement dans NetworkSettings
+        flat_ip: str = net_settings.get("IPAddress") or ""
+        flat_gw: str = net_settings.get("Gateway") or ""
+        flat_mac: str = net_settings.get("MacAddress") or ""
+        if flat_ip or flat_gw:
+            networks.append(
+                ContainerNetwork(
+                    name="default",
+                    ip_address=flat_ip,
+                    gateway=flat_gw,
+                    mac_address=flat_mac,
+                )
+            )
 
     # --- Montages (volumes et bind mounts) ---
     mounts: list[ContainerMount] = []

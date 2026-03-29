@@ -19,7 +19,12 @@ import type { ContainerAction, DetailTab } from "./types";
 
 export function App() {
   const { containers, loading, error, triggerAction } = useContainers();
-  const { policies: autostartPolicies, toggleLoading, toggle: toggleAutostart } = useAutostart();
+  const {
+    policies: autostartPolicies,
+    mechanisms: autostartMechanisms,
+    toggleLoading,
+    toggle: toggleAutostart,
+  } = useAutostart();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("logs");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -94,6 +99,7 @@ export function App() {
               onAction={handleAction}
               actionLoading={actionLoading}
               autostartPolicies={autostartPolicies}
+              autostartMechanisms={autostartMechanisms}
             />
           </div>
         </div>
@@ -171,6 +177,9 @@ export function App() {
                   }
                   autostartKnown={
                     selectedId ? selectedId in autostartPolicies : false
+                  }
+                  autostartMechanism={
+                    selectedId ? (autostartMechanisms[selectedId] ?? "none") : "none"
                   }
                   autostartLoading={toggleLoading === selectedId}
                   onToggleAutostart={() => {

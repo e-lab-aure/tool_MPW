@@ -14,6 +14,7 @@ interface ContainerTableProps {
   onAction: (id: string, action: ContainerAction) => void;
   actionLoading: string | null;
   autostartPolicies: Record<string, string>;
+  autostartMechanisms: Record<string, string>;
 }
 
 /** Formate un timestamp Unix en date lisible. */
@@ -44,6 +45,7 @@ export function ContainerTable({
   onAction,
   actionLoading,
   autostartPolicies,
+  autostartMechanisms,
 }: ContainerTableProps) {
   if (containers.length === 0) {
     return (
@@ -86,6 +88,7 @@ export function ContainerTable({
             const isLoading = actionLoading === c.id;
             const isRunning = c.state.toLowerCase() === "running";
             const isAutostart = autostartPolicies[c.id] === "always";
+            const mechanism = autostartMechanisms[c.id];
 
             return (
               <tr
@@ -140,16 +143,26 @@ export function ContainerTable({
 
                 {/* Indicateur demarrage automatique (read-only) */}
                 <td className="px-4 py-3 text-center">
-                  {autostartPolicies[c.id] !== undefined ? (
-                    isAutostart ? (
-                      <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">
-                        auto
+                  {mechanism === undefined ? (
+                    <span className="text-slate-700 text-xs">...</span>
+                  ) : isAutostart ? (
+                    mechanism === "systemd" ? (
+                      <span
+                        className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-500/15 text-blue-400"
+                        title="Gere par systemd"
+                      >
+                        systemd
                       </span>
                     ) : (
-                      <span className="text-slate-600 text-xs">-</span>
+                      <span
+                        className="rounded px-1.5 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400"
+                        title="Restart policy : always"
+                      >
+                        auto
+                      </span>
                     )
                   ) : (
-                    <span className="text-slate-700 text-xs">...</span>
+                    <span className="text-slate-600 text-xs">-</span>
                   )}
                 </td>
 

@@ -8,8 +8,10 @@ import { useCallback, useEffect, useState } from "react";
 import type { AutostartEntry } from "../types";
 
 interface UseAutostartReturn {
-  /** Dictionnaire id -> restart_policy ("always" | "no" | ...) */
+  /** Dictionnaire id -> restart_policy ("always" | "no") */
   policies: Record<string, string>;
+  /** Dictionnaire id -> mechanism ("restart_policy" | "systemd" | "none") */
+  mechanisms: Record<string, string>;
   /** Id du conteneur dont le toggle est en cours, null sinon */
   toggleLoading: string | null;
   /** Bascule la politique de demarrage automatique d'un conteneur */
@@ -20,6 +22,7 @@ interface UseAutostartReturn {
 
 export function useAutostart(): UseAutostartReturn {
   const [policies, setPolicies] = useState<Record<string, string>>({});
+  const [mechanisms, setMechanisms] = useState<Record<string, string>>({});
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
 
   /** Charge les policies de tous les conteneurs en une seule requete batch. */
@@ -29,11 +32,14 @@ export function useAutostart(): UseAutostartReturn {
       if (!response.ok) return;
 
       const data: AutostartEntry[] = await response.json();
-      const map: Record<string, string> = {};
+      const policyMap: Record<string, string> = {};
+      const mechanismMap: Record<string, string> = {};
       data.forEach((entry) => {
-        map[entry.id] = entry.restart_policy;
+        policyMap[entry.id] = entry.restart_policy;
+        mechanismMap[entry.id] = entry.mechanism;
       });
-      setPolicies(map);
+      setPolicies(policyMap);
+      setMechanisms(mechanismMap);
     } catch {
       // Echec non bloquant : l'autostart est une fonctionnalite secondaire
     }
@@ -73,5 +79,5 @@ export function useAutostart(): UseAutostartReturn {
     [],
   );
 
-  return { policies, toggleLoading, toggle, refresh };
+  return { policies, mechanisms, toggleLoading, toggle, refresh };
 }

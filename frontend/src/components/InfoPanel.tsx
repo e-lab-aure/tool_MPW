@@ -13,9 +13,11 @@ interface InfoPanelProps {
   autostartEnabled: boolean;
   /** true si la policy a ete chargee (distingue "desactive" de "inconnu") */
   autostartKnown: boolean;
+  /** Mecanisme detecte : "restart_policy" | "systemd" | "none" */
+  autostartMechanism: string;
   /** true pendant que le toggle est en cours d'enregistrement */
   autostartLoading: boolean;
-  /** Callback pour basculer l'autostart */
+  /** Callback pour basculer l'autostart (inactif si gere par systemd) */
   onToggleAutostart: () => void;
 }
 
@@ -39,9 +41,13 @@ export function InfoPanel({
   error,
   autostartEnabled,
   autostartKnown,
+  autostartMechanism,
   autostartLoading,
   onToggleAutostart,
 }: InfoPanelProps) {
+  /** Les conteneurs geres par systemd ne peuvent pas etre modifies via l'API. */
+  const isSystemd = autostartMechanism === "systemd";
+  const canToggle = autostartKnown && !isSystemd;
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-xs text-slate-500">
@@ -70,23 +76,50 @@ export function InfoPanel({
         </h3>
         <div className="flex items-center justify-between rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
           <div>
-            <p className="text-sm text-slate-300">
-              {autostartEnabled ? "Actif" : "Inactif"}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-slate-300">
+                {autostartEnabled ? "Actif" : "Inactif"}
+              </p>
+              {isSystemd && (
+                <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-blue-500/15 text-blue-400">
+                  systemd
+                </span>
+              )}
+            </div>
             <p className="mt-0.5 text-xs text-slate-500">
-              {autostartEnabled
-                ? "Le conteneur redemarre automatiquement au demarrage du service Podman."
-                : "Le conteneur ne demarre pas automatiquement."}
+              {isSystemd
+                ? "Gere par une unite systemd - non modifiable via l'interface."
+                : autostartEnabled
+                  ? "Le conteneur redemarre automatiquement au demarrage du service Podman."
+                  : "Le conteneur ne demarre pas automatiquement."}
             </p>
           </div>
           {autostartKnown && (
             <button
-              title={autostartEnabled ? "Desactiver l'autostart" : "Activer l'autostart"}
-              aria-label={autostartEnabled ? "Desactiver l'autostart" : "Activer l'autostart"}
-              disabled={autostartLoading}
-              onClick={onToggleAutostart}
-              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
-                autostartEnabled ? "bg-emerald-500" : "bg-slate-600"
+              title={
+                isSystemd
+                  ? "Gere par systemd - non modifiable ici"
+                  : autostartEnabled
+                    ? "Desactiver l'autostart"
+                    : "Activer l'autostart"
+              }
+              aria-label={
+                isSystemd
+                  ? "Gere par systemd"
+                  : autostartEnabled
+                    ? "Desactiver l'autostart"
+                    : "Activer l'autostart"
+              }
+              disabled={autostartLoading || !canToggle}
+              onClick={canToggle ? onToggleAutostart : undefined}
+              className={`relative ml-4 inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                canToggle ? "cursor-pointer" : "cursor-not-allowed"
+              } ${
+                autostartEnabled
+                  ? isSystemd
+                    ? "bg-blue-500"
+                    : "bg-emerald-500"
+                  : "bg-slate-600"
               }`}
             >
               <span

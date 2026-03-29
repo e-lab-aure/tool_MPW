@@ -84,10 +84,17 @@ class ContainerDetail(BaseModel):
 
 
 class AutostartEntry(BaseModel):
-    """Politique de demarrage automatique d'un conteneur."""
+    """
+    Politique de demarrage automatique d'un conteneur.
+    mechanism indique comment l'autostart est configure :
+      - "restart_policy" : via --restart=always dans Podman
+      - "systemd"        : gere par une unite systemd (quadlet ou podman generate systemd)
+      - "none"           : pas d'autostart configure
+    """
 
     id: str
     restart_policy: str
+    mechanism: str
 
 
 class AutostartUpdate(BaseModel):
