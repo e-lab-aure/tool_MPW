@@ -138,9 +138,10 @@ async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionRespo
     policy_name = "always" if body.enabled else "no"
 
     async with get_libpod_client() as client:
+        # L'API libpod attend RestartPolicy comme string (pas l'objet Docker compat)
         response = await client.post(
             f"/containers/{container_id}/update",
-            json={"RestartPolicy": {"Name": policy_name, "MaximumRetryCount": 0}},
+            json={"RestartPolicy": policy_name, "RestartRetries": 0},
         )
 
     if response.status_code not in (200, 201, 204):
