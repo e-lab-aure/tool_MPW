@@ -17,6 +17,7 @@ from app.models.schemas import (
     ContainerDetail,
     ContainerMount,
     ContainerNetwork,
+    QuadletFile,
 )
 from app.services.podman import get_client, get_libpod_client, parse_container
 
@@ -282,6 +283,127 @@ async def inspect_container(container_id: str) -> ContainerDetail:
         size_root_fs=raw.get("SizeRootFs") or 0,
         size_rw=raw.get("SizeRw") or 0,
     )
+
+
+@router.get("/{container_id}/quadlet", response_model=QuadletFile)
+async def get_quadlet(container_id: str) -> QuadletFile:
+    """
+    Genere le contenu d'un fichier Quadlet (.container) pour un conteneur donne.
+    Le fichier genere peut etre place dans ~/.config/containers/systemd/ pour
+    activer le demarrage automatique via systemd en mode utilisateur (rootless).
+    """
+    async with get_libpod_client(timeout=15.0) as client:
+        response = await client.get(f"/containers/{container_id}/json")
+
+    if response.status_code != 200:
+        logger.error(
+            "[ERROR] %s - containers.quadlet - Podman HTTP %d pour %s",
+            _now(),
+            response.status_code,
+            container_id[:12],
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Impossible d'inspecter le conteneur.",
+        )
+
+    raw = response.json()
+    config: dict = raw.get("Config") or {}
+    host_config: dict = raw.get("HostConfig") or {}
+
+    # Nom du conteneur (sans le slash initial)
+    name: str = (raw.get("Name") or container_id).lstrip("/")
+    # Image d'origine telle qu'elle a ete utilisee au lancement
+    image: str = config.get("Image") or raw.get("Image") or ""
+
+    # --- Variables d'environnement ---
+    # On filtre les variables injectees automatiquement par Podman (PATH, HOME, TERM, etc.)
+    env_defaults = {"PATH", "HOME", "TERM", "HOSTNAME", "container"}
+    env_lines: list[str] = []
+    for env_str in config.get("Env") or []:
+        if "=" in env_str:
+            key = env_str.split("=", 1)[0]
+            if key not in env_defaults:
+                env_lines.append(f"Environment={env_str}")
+
+    # --- Ports publies ---
+    port_lines: list[str] = []
+    port_bindings: dict = host_config.get("PortBindings") or {}
+    for container_port_proto, host_bindings in port_bindings.items():
+        if not host_bindings:
+            continue
+        for binding in host_bindings:
+            host_ip: str = binding.get("HostIp") or ""
+            host_port: str = binding.get("HostPort") or ""
+            if host_ip and host_ip not in ("0.0.0.0", "::"):
+                port_lines.append(f"PublishPort={host_ip}:{host_port}:{container_port_proto}")
+            else:
+                port_lines.append(f"PublishPort={host_port}:{container_port_proto}")
+
+    # --- Montages (volumes et bind mounts) ---
+    volume_lines: list[str] = []
+    for mount in raw.get("Mounts") or []:
+        m_type: str = mount.get("Type", "bind")
+        source: str = mount.get("Source", "")
+        dest: str = mount.get("Destination", "")
+        mode: str = "rw" if mount.get("RW", True) else "ro"
+        if m_type in ("bind", "volume") and source and dest:
+            volume_lines.append(f"Volume={source}:{dest}:{mode}")
+
+    # --- Reseaux ---
+    # On exclut le reseau interne "pasta" et "slirp4netns" qui ne sont pas des noms
+    # de reseau Podman configurables via Quadlet
+    excluded_nets = {"pasta", "slirp4netns", "host", "none", "bridge", "default"}
+    net_settings: dict = raw.get("NetworkSettings") or {}
+    raw_networks: dict = net_settings.get("Networks") or {}
+    network_lines: list[str] = [
+        f"Network={net_name}"
+        for net_name in raw_networks
+        if net_name.lower() not in excluded_nets
+    ]
+
+    # --- Construction du fichier Quadlet ---
+    sections: list[str] = []
+
+    sections.append("[Unit]")
+    sections.append(f"Description=Podman container - {name}")
+    sections.append("After=network-online.target")
+    sections.append("")
+
+    sections.append("[Container]")
+    sections.append(f"Image={image}")
+    sections.append(f"ContainerName={name}")
+
+    if env_lines:
+        sections.extend(env_lines)
+    if port_lines:
+        sections.extend(port_lines)
+    if volume_lines:
+        sections.extend(volume_lines)
+    if network_lines:
+        sections.extend(network_lines)
+
+    sections.append("")
+    sections.append("[Service]")
+    sections.append("Restart=always")
+    sections.append("TimeoutStartSec=300")
+    sections.append("")
+
+    sections.append("[Install]")
+    sections.append("WantedBy=default.target")
+
+    content = "\n".join(sections)
+    filename = f"{name}.container"
+    install_path = f"~/.config/containers/systemd/{filename}"
+
+    logger.info(
+        "[INFO] %s - containers.quadlet - fichier genere pour %s (%s)",
+        _now(),
+        container_id[:12],
+        filename,
+    )
+
+    return QuadletFile(content=content, filename=filename, install_path=install_path)
 
 
 @router.post("/{container_id}/start", response_model=ActionResponse)

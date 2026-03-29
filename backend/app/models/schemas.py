@@ -101,3 +101,14 @@ class AutostartUpdate(BaseModel):
     """Requete de modification de la politique de demarrage automatique."""
 
     enabled: bool
+
+
+class QuadletFile(BaseModel):
+    """
+    Fichier Quadlet genere pour un conteneur.
+    Contient le contenu du fichier .container et le chemin d'installation recommande.
+    """
+
+    content: str
+    filename: str
+    install_path: str

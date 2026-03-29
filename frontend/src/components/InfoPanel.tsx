@@ -3,7 +3,7 @@
  * Affiche les reseaux, les montages (volumes/bind mounts) et la taille de l'image.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ContainerDetail } from "../types";
 
 interface InfoPanelProps {
@@ -22,8 +22,10 @@ interface InfoPanelProps {
   autostartError: string | null;
   /** Callback pour basculer l'autostart (inactif si gere par systemd) */
   onToggleAutostart: () => void;
-  /** Nom du conteneur, utilise pour generer les commandes systemd */
+  /** Nom du conteneur, utilise pour les commandes systemd */
   containerName: string;
+  /** Id du conteneur, utilise pour appeler l'endpoint de generation Quadlet */
+  containerId: string;
 }
 
 /** Convertit des octets en chaine lisible (MB, GB). */
@@ -40,6 +42,13 @@ function truncatePath(path: string, maxLen: number = 48): string {
   return `${path.slice(0, 20)}...${path.slice(-(maxLen - 23))}`;
 }
 
+/** Contenu d'un fichier Quadlet retourne par le backend. */
+interface QuadletFile {
+  content: string;
+  filename: string;
+  install_path: string;
+}
+
 export function InfoPanel({
   detail,
   loading,
@@ -51,32 +60,60 @@ export function InfoPanel({
   autostartError,
   onToggleAutostart,
   containerName,
+  containerId,
 }: InfoPanelProps) {
   /** Les conteneurs geres par systemd ne peuvent pas etre modifies via l'API. */
   const isSystemd = autostartMechanism === "systemd";
   const canToggle = autostartKnown && !isSystemd;
 
+  /** Indique si la section Quadlet doit etre affichee. */
+  const showQuadlet = autostartKnown && (isSystemd || !!autostartError);
+
+  /** Fichier Quadlet genere par le backend, null si non encore charge. */
+  const [quadlet, setQuadlet] = useState<QuadletFile | null>(null);
+  const [quadletLoading, setQuadletLoading] = useState(false);
+  const [quadletError, setQuadletError] = useState<string | null>(null);
+
   /**
-   * Commande pour activer l'autostart via systemd.
-   * Genere le fichier d'unite, recharge systemd et active le service.
+   * Charge le fichier Quadlet depuis le backend au moment ou la section devient visible.
+   * On ne recharge pas si le contenu est deja disponible pour ce meme conteneur.
    */
-  const cmdEnable =
-    `podman generate systemd --name --new ${containerName} > ` +
-    `~/.config/systemd/user/${containerName}.service && ` +
+  useEffect(() => {
+    if (!showQuadlet) return;
+    if (quadlet !== null) return;
+
+    setQuadletLoading(true);
+    setQuadletError(null);
+
+    fetch(`/api/containers/${containerId}/quadlet`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json() as Promise<QuadletFile>;
+      })
+      .then((data) => setQuadlet(data))
+      .catch((e: Error) =>
+        setQuadletError(`Impossible de generer le fichier Quadlet : ${e.message}`),
+      )
+      .finally(() => setQuadletLoading(false));
+  }, [showQuadlet, containerId, quadlet]);
+
+  /**
+   * Commande pour activer le service Quadlet apres avoir sauvegarde le fichier .container.
+   * systemd detecte automatiquement les fichiers Quadlet dans le repertoire surveille.
+   */
+  const cmdActivate =
     `systemctl --user daemon-reload && ` +
     `systemctl --user enable --now ${containerName}.service`;
 
   /**
-   * Commande pour desactiver l'autostart systemd.
-   * Arrete le service, supprime le fichier d'unite et recharge systemd.
+   * Commande pour desactiver et supprimer le service Quadlet.
+   * Apres suppression du fichier .container, on recharge systemd.
    */
-  const cmdDisable =
+  const cmdDeactivate =
     `systemctl --user disable --now ${containerName}.service && ` +
-    `rm ~/.config/systemd/user/${containerName}.service && ` +
+    `rm ~/.config/containers/systemd/${containerName}.container && ` +
     `systemctl --user daemon-reload`;
 
-  /** Indique si les commandes systemd sont pertinentes a afficher. */
-  const showSystemdCommands = autostartKnown && (isSystemd || !!autostartError);
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-xs text-slate-500">
@@ -168,25 +205,55 @@ export function InfoPanel({
         </p>
       )}
 
-      {/* Commandes systemd a copier-coller */}
-      {showSystemdCommands && (
+      {/* Section Quadlet */}
+      {showQuadlet && (
         <section>
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
-            Gestion via systemd
+            Gestion via Quadlet (systemd)
           </h3>
-          <div className="space-y-2">
-            {isSystemd ? (
-              <CopyableCommand
-                label="Desactiver l'autostart"
-                command={cmdDisable}
-              />
-            ) : (
-              <CopyableCommand
-                label="Activer l'autostart"
-                command={cmdEnable}
-              />
-            )}
-          </div>
+          {quadletLoading && (
+            <p className="text-xs text-slate-500">Generation du fichier Quadlet...</p>
+          )}
+          {quadletError && (
+            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-400">
+              {quadletError}
+            </p>
+          )}
+          {quadlet && !quadletLoading && (
+            <div className="space-y-3">
+              {/* Fichier .container a creer */}
+              <div>
+                <p className="mb-1 text-xs text-slate-500">
+                  1. Creer le fichier{" "}
+                  <code className="font-mono text-slate-400">{quadlet.install_path}</code>
+                </p>
+                <CopyableBlock content={quadlet.content} label={quadlet.filename} />
+              </div>
+
+              {/* Commande pour activer ou desactiver selon le contexte */}
+              {isSystemd ? (
+                <div>
+                  <p className="mb-1 text-xs text-slate-500">
+                    2. Pour desactiver et supprimer le service :
+                  </p>
+                  <CopyableCommand
+                    label="Desactiver le service Quadlet"
+                    command={cmdDeactivate}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <p className="mb-1 text-xs text-slate-500">
+                    2. Apres avoir sauvegarde le fichier, activer le service :
+                  </p>
+                  <CopyableCommand
+                    label="Activer le service Quadlet"
+                    command={cmdActivate}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
 
@@ -310,6 +377,60 @@ export function InfoPanel({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/**
+ * Bloc multi-ligne affichant un fichier texte (ex: fichier Quadlet) avec bouton copier.
+ * Utilise une balise pre pour conserver l'indentation et les retours a la ligne.
+ */
+function CopyableBlock({ content, label }: { content: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+
+  /** Copie le contenu dans le presse-papiers avec fallback pour HTTP. */
+  function handleCopy() {
+    const confirm = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(content).then(confirm);
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.value = content;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      confirm();
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-700/50 bg-slate-800/30">
+      <div className="flex items-center justify-between border-b border-slate-700/50 px-3 py-1.5">
+        <span className="font-mono text-xs text-slate-500">{label}</span>
+        <button
+          onClick={handleCopy}
+          title="Copier le fichier"
+          aria-label="Copier le fichier"
+          className={`shrink-0 rounded border px-2 py-0.5 text-xs transition-colors duration-150 ${
+            copied
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+              : "border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-300"
+          }`}
+        >
+          {copied ? "Copie !" : "Copier"}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-3 font-mono text-xs leading-relaxed text-slate-300">
+        {content}
+      </pre>
     </div>
   );
 }

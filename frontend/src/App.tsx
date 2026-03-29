@@ -174,6 +174,7 @@ export function App() {
                   loading={detailLoading}
                   error={detailError}
                   containerName={selectedContainer.name}
+                  containerId={selectedId}
                   autostartEnabled={
                     selectedId ? autostartPolicies[selectedId] === "always" : false
                   }
