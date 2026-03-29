@@ -10,6 +10,7 @@ import { Header } from "./components/Header";
 import { InfoPanel } from "./components/InfoPanel";
 import { LogsPanel } from "./components/LogsPanel";
 import { StatsPanel } from "./components/StatsPanel";
+import { useAutostart } from "./hooks/useAutostart";
 import { useContainerDetail } from "./hooks/useContainerDetail";
 import { useContainers } from "./hooks/useContainers";
 import { useLogs } from "./hooks/useLogs";
@@ -18,6 +19,7 @@ import type { ContainerAction, DetailTab } from "./types";
 
 export function App() {
   const { containers, loading, error, triggerAction } = useContainers();
+  const { policies: autostartPolicies, toggleLoading, toggle: toggleAutostart } = useAutostart();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("logs");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -91,6 +93,9 @@ export function App() {
               onSelect={handleSelect}
               onAction={handleAction}
               actionLoading={actionLoading}
+              autostartPolicies={autostartPolicies}
+              toggleLoading={toggleLoading}
+              onToggleAutostart={toggleAutostart}
             />
           </div>
         </div>

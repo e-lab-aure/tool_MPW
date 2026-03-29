@@ -1,8 +1,9 @@
 """
 Routes REST pour la gestion des conteneurs Podman.
-Expose : liste, inspection, demarrage, arret, redemarrage.
+Expose : liste, inspection, demarrage, arret, redemarrage, autostart.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -10,6 +11,8 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import (
     ActionResponse,
+    AutostartEntry,
+    AutostartUpdate,
     Container,
     ContainerDetail,
     ContainerMount,
@@ -54,6 +57,88 @@ async def list_containers() -> list[Container]:
             len(containers),
         )
         return containers
+
+
+@router.get("/autostart", response_model=list[AutostartEntry])
+async def get_autostart_policies() -> list[AutostartEntry]:
+    """
+    Retourne la politique de demarrage automatique de tous les conteneurs.
+    Effectue les inspects en parallele via asyncio.gather pour minimiser la latence.
+    Une politique "always" signifie que le conteneur redemarrera automatiquement.
+    """
+    async with get_client(timeout=15.0) as client:
+        list_response = await client.get("/containers/json", params={"all": True})
+
+        if list_response.status_code != 200:
+            logger.error(
+                "[ERROR] %s - containers.autostart - Podman retourne HTTP %d",
+                _now(),
+                list_response.status_code,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="Impossible de joindre l'API Podman.",
+            )
+
+        container_ids: list[str] = [c["Id"] for c in list_response.json()]
+
+        async def _inspect_policy(cid: str) -> AutostartEntry:
+            """Recupere la restart policy d'un conteneur depuis son inspect."""
+            resp = await client.get(f"/containers/{cid}/json")
+            if resp.status_code != 200:
+                return AutostartEntry(id=cid, restart_policy="no")
+            raw = resp.json()
+            policy: str = (
+                raw.get("HostConfig") or {}
+            ).get("RestartPolicy", {}).get("Name") or "no"
+            return AutostartEntry(id=cid, restart_policy=policy)
+
+        results = await asyncio.gather(*[_inspect_policy(cid) for cid in container_ids])
+
+    logger.info(
+        "[INFO] %s - containers.autostart - politiques recuperees pour %d conteneurs",
+        _now(),
+        len(results),
+    )
+    return list(results)
+
+
+@router.post("/{container_id}/autostart", response_model=ActionResponse)
+async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionResponse:
+    """
+    Active ou desactive le demarrage automatique d'un conteneur.
+    Modifie la RestartPolicy via l'API Docker compat :
+    - enabled=True  -> RestartPolicy "always"
+    - enabled=False -> RestartPolicy "no"
+    """
+    policy_name = "always" if body.enabled else "no"
+
+    async with get_client() as client:
+        response = await client.post(
+            f"/containers/{container_id}/update",
+            json={"RestartPolicy": {"Name": policy_name, "MaximumRetryCount": 0}},
+        )
+
+    if response.status_code not in (200, 204):
+        logger.error(
+            "[ERROR] %s - containers.autostart - echec update pour %s (HTTP %d)",
+            _now(),
+            container_id[:12],
+            response.status_code,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Impossible de modifier la politique de demarrage.",
+        )
+
+    action = "autostart_enabled" if body.enabled else "autostart_disabled"
+    logger.info(
+        "[INFO] %s - containers.autostart - conteneur %s : policy -> %s",
+        _now(),
+        container_id[:12],
+        policy_name,
+    )
+    return ActionResponse(status=action, container_id=container_id)
 
 
 @router.get("/{container_id}/inspect", response_model=ContainerDetail)

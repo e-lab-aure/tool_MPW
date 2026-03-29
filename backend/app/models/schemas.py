@@ -81,3 +81,16 @@ class ContainerDetail(BaseModel):
     mounts: list[ContainerMount]
     size_root_fs: int
     size_rw: int
+
+
+class AutostartEntry(BaseModel):
+    """Politique de demarrage automatique d'un conteneur."""
+
+    id: str
+    restart_policy: str
+
+
+class AutostartUpdate(BaseModel):
+    """Requete de modification de la politique de demarrage automatique."""
+
+    enabled: bool

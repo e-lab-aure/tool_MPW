@@ -62,3 +62,9 @@ export type ContainerAction = "start" | "stop" | "restart";
 
 /** Onglets disponibles dans le panneau de detail d'un conteneur. */
 export type DetailTab = "logs" | "stats" | "info";
+
+/** Politique de demarrage automatique d'un conteneur. */
+export interface AutostartEntry {
+  id: string;
+  restart_policy: string;
+}

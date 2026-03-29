@@ -13,6 +13,9 @@ interface ContainerTableProps {
   onSelect: (id: string) => void;
   onAction: (id: string, action: ContainerAction) => void;
   actionLoading: string | null;
+  autostartPolicies: Record<string, string>;
+  toggleLoading: string | null;
+  onToggleAutostart: (id: string, enabled: boolean) => void;
 }
 
 /** Formate un timestamp Unix en date lisible. */
@@ -42,6 +45,9 @@ export function ContainerTable({
   onSelect,
   onAction,
   actionLoading,
+  autostartPolicies,
+  toggleLoading,
+  onToggleAutostart,
 }: ContainerTableProps) {
   if (containers.length === 0) {
     return (
@@ -74,6 +80,7 @@ export function ContainerTable({
             <th className="px-4 py-3">Etat</th>
             <th className="px-4 py-3">Ports</th>
             <th className="px-4 py-3">Cree le</th>
+            <th className="px-4 py-3 text-center">Demarrage</th>
             <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
@@ -82,6 +89,8 @@ export function ContainerTable({
             const isSelected = c.id === selectedId;
             const isLoading = actionLoading === c.id;
             const isRunning = c.state.toLowerCase() === "running";
+            const isAutostart = autostartPolicies[c.id] === "always";
+            const isToggling = toggleLoading === c.id;
 
             return (
               <tr
@@ -132,6 +141,32 @@ export function ContainerTable({
                 {/* Date de creation */}
                 <td className="px-4 py-3 text-xs text-slate-500">
                   {formatDate(c.created)}
+                </td>
+
+                {/* Toggle demarrage automatique */}
+                <td
+                  className="px-4 py-3 text-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {autostartPolicies[c.id] !== undefined ? (
+                    <button
+                      title={isAutostart ? "Desactiver l'autostart" : "Activer l'autostart"}
+                      aria-label={isAutostart ? "Desactiver l'autostart" : "Activer l'autostart"}
+                      disabled={isToggling}
+                      onClick={() => onToggleAutostart(c.id, !isAutostart)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 ${
+                        isAutostart ? "bg-emerald-500" : "bg-slate-600"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform duration-200 ${
+                          isAutostart ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  ) : (
+                    <span className="text-slate-600 text-xs">-</span>
+                  )}
                 </td>
 
                 {/* Boutons d'action */}
