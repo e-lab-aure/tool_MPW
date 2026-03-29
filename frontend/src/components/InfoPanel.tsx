@@ -3,6 +3,7 @@
  * Affiche les reseaux, les montages (volumes/bind mounts) et la taille de l'image.
  */
 
+import { useState } from "react";
 import type { ContainerDetail } from "../types";
 
 interface InfoPanelProps {
@@ -21,6 +22,8 @@ interface InfoPanelProps {
   autostartError: string | null;
   /** Callback pour basculer l'autostart (inactif si gere par systemd) */
   onToggleAutostart: () => void;
+  /** Nom du conteneur, utilise pour generer les commandes systemd */
+  containerName: string;
 }
 
 /** Convertit des octets en chaine lisible (MB, GB). */
@@ -47,10 +50,33 @@ export function InfoPanel({
   autostartLoading,
   autostartError,
   onToggleAutostart,
+  containerName,
 }: InfoPanelProps) {
   /** Les conteneurs geres par systemd ne peuvent pas etre modifies via l'API. */
   const isSystemd = autostartMechanism === "systemd";
   const canToggle = autostartKnown && !isSystemd;
+
+  /**
+   * Commande pour activer l'autostart via systemd.
+   * Genere le fichier d'unite, recharge systemd et active le service.
+   */
+  const cmdEnable =
+    `podman generate systemd --name --new ${containerName} > ` +
+    `~/.config/systemd/user/${containerName}.service && ` +
+    `systemctl --user daemon-reload && ` +
+    `systemctl --user enable --now ${containerName}.service`;
+
+  /**
+   * Commande pour desactiver l'autostart systemd.
+   * Arrete le service, supprime le fichier d'unite et recharge systemd.
+   */
+  const cmdDisable =
+    `systemctl --user disable --now ${containerName}.service && ` +
+    `rm ~/.config/systemd/user/${containerName}.service && ` +
+    `systemctl --user daemon-reload`;
+
+  /** Indique si les commandes systemd sont pertinentes a afficher. */
+  const showSystemdCommands = autostartKnown && (isSystemd || !!autostartError);
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-xs text-slate-500">
@@ -140,6 +166,28 @@ export function InfoPanel({
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
           {autostartError}
         </p>
+      )}
+
+      {/* Commandes systemd a copier-coller */}
+      {showSystemdCommands && (
+        <section>
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-slate-500">
+            Gestion via systemd
+          </h3>
+          <div className="space-y-2">
+            {isSystemd ? (
+              <CopyableCommand
+                label="Desactiver l'autostart"
+                command={cmdDisable}
+              />
+            ) : (
+              <CopyableCommand
+                label="Activer l'autostart"
+                command={cmdEnable}
+              />
+            )}
+          </div>
+        </section>
       )}
 
       {/* Taille de l'image */}
@@ -262,6 +310,42 @@ export function InfoPanel({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+/** Bloc de commande avec label et bouton copier. */
+function CopyableCommand({ label, command }: { label: string; command: string }) {
+  const [copied, setCopied] = useState(false);
+
+  /** Copie la commande dans le presse-papiers et affiche un retour visuel. */
+  function handleCopy() {
+    navigator.clipboard.writeText(command).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3">
+      <p className="mb-2 text-xs text-slate-500">{label}</p>
+      <div className="flex items-start gap-2">
+        <code className="flex-1 break-all font-mono text-xs leading-relaxed text-slate-300">
+          {command}
+        </code>
+        <button
+          onClick={handleCopy}
+          title="Copier la commande"
+          aria-label="Copier la commande"
+          className={`ml-1 shrink-0 rounded border px-2 py-1 text-xs transition-colors duration-150 ${
+            copied
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+              : "border-slate-600 text-slate-400 hover:border-slate-500 hover:text-slate-300"
+          }`}
+        >
+          {copied ? "Copie !" : "Copier"}
+        </button>
+      </div>
     </div>
   );
 }
