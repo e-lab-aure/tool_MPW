@@ -221,10 +221,21 @@ export function InfoPanel({
           )}
           {quadlet && !quadletLoading && (
             <div className="space-y-3">
+              {/* Repertoire a creer si absent */}
+              <div>
+                <p className="mb-1 text-xs text-slate-500">
+                  1. Creer le repertoire si absent :
+                </p>
+                <CopyableCommand
+                  label="Creer le repertoire Quadlet"
+                  command="mkdir -p ~/.config/containers/systemd"
+                />
+              </div>
+
               {/* Fichier .container a creer */}
               <div>
                 <p className="mb-1 text-xs text-slate-500">
-                  1. Creer le fichier{" "}
+                  2. Creer le fichier{" "}
                   <code className="font-mono text-slate-400">{quadlet.install_path}</code>
                 </p>
                 <CopyableBlock content={quadlet.content} label={quadlet.filename} />
@@ -234,7 +245,7 @@ export function InfoPanel({
               {isSystemd ? (
                 <div>
                   <p className="mb-1 text-xs text-slate-500">
-                    2. Pour desactiver et supprimer le service :
+                    3. Pour desactiver et supprimer le service :
                   </p>
                   <CopyableCommand
                     label="Desactiver le service Quadlet"
@@ -244,7 +255,7 @@ export function InfoPanel({
               ) : (
                 <div>
                   <p className="mb-1 text-xs text-slate-500">
-                    2. Apres avoir sauvegarde le fichier, activer le service :
+                    3. Apres avoir sauvegarde le fichier, activer le service :
                   </p>
                   <CopyableCommand
                     label="Activer le service Quadlet"
