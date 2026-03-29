@@ -17,6 +17,8 @@ interface InfoPanelProps {
   autostartMechanism: string;
   /** true pendant que le toggle est en cours d'enregistrement */
   autostartLoading: boolean;
+  /** Message d'erreur du dernier toggle, null si aucun */
+  autostartError: string | null;
   /** Callback pour basculer l'autostart (inactif si gere par systemd) */
   onToggleAutostart: () => void;
 }
@@ -43,6 +45,7 @@ export function InfoPanel({
   autostartKnown,
   autostartMechanism,
   autostartLoading,
+  autostartError,
   onToggleAutostart,
 }: InfoPanelProps) {
   /** Les conteneurs geres par systemd ne peuvent pas etre modifies via l'API. */
@@ -131,6 +134,13 @@ export function InfoPanel({
           )}
         </div>
       </section>
+
+      {/* Message d'erreur autostart (ex: version Podman insuffisante) */}
+      {autostartError && (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-400">
+          {autostartError}
+        </p>
+      )}
 
       {/* Taille de l'image */}
       <section>

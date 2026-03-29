@@ -23,6 +23,7 @@ export function App() {
     policies: autostartPolicies,
     mechanisms: autostartMechanisms,
     toggleLoading,
+    toggleError: autostartError,
     toggle: toggleAutostart,
   } = useAutostart();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -182,6 +183,7 @@ export function App() {
                     selectedId ? (autostartMechanisms[selectedId] ?? "none") : "none"
                   }
                   autostartLoading={toggleLoading === selectedId}
+                  autostartError={toggleLoading === selectedId ? null : autostartError}
                   onToggleAutostart={() => {
                     if (selectedId) {
                       toggleAutostart(

@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import containers, logs, stats
-from app.services.podman import PODMAN_SOCKET, get_client
+from app.services.podman import PODMAN_SOCKET, get_client, get_libpod_client
 
 # --- Configuration du logging ---
 logging.basicConfig(
@@ -105,5 +105,33 @@ app.include_router(
 
 @app.get("/api/health", tags=["health"])
 async def health() -> dict[str, str]:
-    """Endpoint de sante pour les health checks du compose."""
-    return {"status": "ok", "service": "Master Pod Warden"}
+    """
+    Endpoint de sante pour les health checks du compose.
+    Inclut la version de Podman et les capacites supportees.
+    """
+    podman_version = "unknown"
+    restart_policy_editable = False
+
+    try:
+        async with get_libpod_client(timeout=5.0) as client:
+            resp = await client.get("/version")
+            if resp.status_code == 200:
+                data = resp.json()
+                podman_version = (
+                    data.get("Version")
+                    or data.get("Components", [{}])[0].get("Version", "unknown")
+                )
+                # La modification de RestartPolicy via l'API est supportee a partir de
+                # Podman 5.0.0. En dessous, l'appel reussit mais est silencieusement ignore.
+                parts = podman_version.split(".")
+                major = int(parts[0]) if parts and parts[0].isdigit() else 0
+                restart_policy_editable = major >= 5
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "service": "Master Pod Warden",
+        "podman_version": podman_version,
+        "restart_policy_editable": str(restart_policy_editable).lower(),
+    }

@@ -138,10 +138,10 @@ async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionRespo
     policy_name = "always" if body.enabled else "no"
 
     async with get_libpod_client() as client:
-        # L'API libpod attend RestartPolicy comme string (pas l'objet Docker compat)
+        # L'API libpod attend restartPolicy comme string simple (camelCase)
         response = await client.post(
             f"/containers/{container_id}/update",
-            json={"RestartPolicy": policy_name, "RestartRetries": 0},
+            json={"restartPolicy": policy_name, "restartRetries": 0},
         )
 
     if response.status_code not in (200, 201, 204):
@@ -156,6 +156,33 @@ async def set_autostart(container_id: str, body: AutostartUpdate) -> ActionRespo
             status_code=502,
             detail="Impossible de modifier la politique de demarrage.",
         )
+
+    # Verification que la valeur a bien ete persistee.
+    # Podman < 5.0 retourne 200 mais ignore silencieusement le champ restartPolicy.
+    async with get_libpod_client(timeout=5.0) as client:
+        verify_resp = await client.get(f"/containers/{container_id}/json")
+
+    if verify_resp.status_code == 200:
+        actual_policy: str = (
+            (verify_resp.json().get("HostConfig") or {})
+            .get("RestartPolicy", {})
+            .get("Name") or "no"
+        )
+        if actual_policy != policy_name:
+            logger.warning(
+                "[WARNING] %s - containers.autostart - RestartPolicy non persistee pour %s"
+                " (Podman < 5.0 ne supporte pas cette modification via l'API)",
+                _now(),
+                container_id[:12],
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Podman 5.0 ou superieur est requis pour modifier la restart policy "
+                    "via l'API. Votre version ne supporte pas cette operation. "
+                    "Utilisez systemd pour gerer l'autostart sur cette installation."
+                ),
+            )
 
     action = "autostart_enabled" if body.enabled else "autostart_disabled"
     logger.info(

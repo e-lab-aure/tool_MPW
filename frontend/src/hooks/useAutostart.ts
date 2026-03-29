@@ -14,6 +14,8 @@ interface UseAutostartReturn {
   mechanisms: Record<string, string>;
   /** Id du conteneur dont le toggle est en cours, null sinon */
   toggleLoading: string | null;
+  /** Message d'erreur du dernier toggle, null sinon */
+  toggleError: string | null;
   /** Bascule la politique de demarrage automatique d'un conteneur */
   toggle: (id: string, enabled: boolean) => Promise<void>;
   /** Recharge toutes les policies depuis l'API */
@@ -24,6 +26,7 @@ export function useAutostart(): UseAutostartReturn {
   const [policies, setPolicies] = useState<Record<string, string>>({});
   const [mechanisms, setMechanisms] = useState<Record<string, string>>({});
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+  const [toggleError, setToggleError] = useState<string | null>(null);
 
   /** Charge les policies de tous les conteneurs en une seule requete batch. */
   const refresh = useCallback(async (): Promise<void> => {
@@ -57,6 +60,7 @@ export function useAutostart(): UseAutostartReturn {
   const toggle = useCallback(
     async (id: string, enabled: boolean): Promise<void> => {
       setToggleLoading(id);
+      setToggleError(null);
       try {
         const response = await fetch(`/api/containers/${id}/autostart`, {
           method: "POST",
@@ -69,9 +73,14 @@ export function useAutostart(): UseAutostartReturn {
             ...prev,
             [id]: enabled ? "always" : "no",
           }));
+        } else {
+          // Recuperer le message d'erreur retourne par le backend
+          const data = await response.json().catch(() => ({}));
+          const message: string = data?.detail ?? `Erreur ${response.status}`;
+          setToggleError(message);
         }
       } catch {
-        // Silencieux - l'etat precedent reste affiche
+        setToggleError("Impossible de joindre l'API.");
       } finally {
         setToggleLoading(null);
       }
@@ -79,5 +88,5 @@ export function useAutostart(): UseAutostartReturn {
     [],
   );
 
-  return { policies, mechanisms, toggleLoading, toggle, refresh };
+  return { policies, mechanisms, toggleLoading, toggleError, toggle, refresh };
 }
